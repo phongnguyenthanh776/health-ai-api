@@ -13,5 +13,9 @@ imbalanced-learn>=0.12.0
 joblib>=1.3.0
 pillow>=10.0.0
 
+# ML models (lightweight versions)
+xgboost>=2.0.0
+lightgbm>=4.0.0
+
 # Utility
 requests>=2.31.0
