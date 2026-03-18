@@ -1241,7 +1241,14 @@ def predict_image():
         if not image_bytes:
             return jsonify({'error': 'Image file is empty'}), 400
 
-        model = load_image_model_if_needed(disease_type)
+        try:
+            model = load_image_model_if_needed(disease_type)
+        except RuntimeError as e:
+            return jsonify({
+                'error': 'Image prediction service unavailable',
+                'message': str(e),
+                'note': 'PyTorch image runtime is not available on this instance. Please use tabular disease prediction instead.'
+            }), 503
         labels = IMAGE_LABELS.get(disease_type, [])
         decision_threshold = get_image_decision_threshold(disease_type)
         attention_map = None
