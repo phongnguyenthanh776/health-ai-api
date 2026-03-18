@@ -37,3 +37,5 @@ lightgbm>=4.0.0
 
 # Utils
 requests>=2.31.0
+
+gunicorn>=21.2.0
