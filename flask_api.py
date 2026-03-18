@@ -17,19 +17,46 @@ import builtins
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFilter, ImageOps, ImageFont
 
-try:
-    import torch
+torch = None
+load_binary_cnn_model = None
+predict_probability_and_gradcam = None
+TORCH_IMAGE_SUPPORT = False
+TORCH_IMPORT_ATTEMPTED = False
+TORCH_IMAGE_IMPORT_ERROR = None
+
+
+def ensure_torch_image_support():
+    """Lazy import torch/image utilities to keep startup memory low on Render."""
+    global torch, load_binary_cnn_model, predict_probability_and_gradcam
+    global TORCH_IMAGE_SUPPORT, TORCH_IMPORT_ATTEMPTED, TORCH_IMAGE_IMPORT_ERROR
+
+    if TORCH_IMAGE_SUPPORT:
+        return True
+
+    if TORCH_IMPORT_ATTEMPTED:
+        return False
+
+    TORCH_IMPORT_ATTEMPTED = True
     try:
-        from image_cnn_utils import load_binary_cnn_model, predict_probability_and_gradcam
-    except Exception:
-        from AIModel.image_cnn_utils import load_binary_cnn_model, predict_probability_and_gradcam
-    TORCH_IMAGE_SUPPORT = True
-except Exception as torch_image_error:
-    torch = None
-    load_binary_cnn_model = None
-    predict_probability_and_gradcam = None
-    TORCH_IMAGE_SUPPORT = False
-    print(f"⚠️  PyTorch image pipeline unavailable: {torch_image_error}")
+        import torch as imported_torch
+        try:
+            from image_cnn_utils import load_binary_cnn_model as load_cnn_model
+            from image_cnn_utils import predict_probability_and_gradcam as predict_gradcam
+        except Exception:
+            from AIModel.image_cnn_utils import load_binary_cnn_model as load_cnn_model
+            from AIModel.image_cnn_utils import predict_probability_and_gradcam as predict_gradcam
+
+        torch = imported_torch
+        load_binary_cnn_model = load_cnn_model
+        predict_probability_and_gradcam = predict_gradcam
+        TORCH_IMAGE_SUPPORT = True
+        TORCH_IMAGE_IMPORT_ERROR = None
+        return True
+    except Exception as torch_image_error:
+        TORCH_IMAGE_SUPPORT = False
+        TORCH_IMAGE_IMPORT_ERROR = str(torch_image_error)
+        print(f"⚠️  PyTorch image pipeline unavailable: {torch_image_error}")
+        return False
 
 def safe_print(*args, **kwargs):
     try:
@@ -57,6 +84,7 @@ DISEASE_TYPES = ['heart_disease', 'diabetes', 'hypertension', 'stroke']
 IMAGE_MODELS = {}
 IMAGE_LABELS = {}
 IMAGE_META = {}
+IMAGE_MODEL_ARTIFACTS = {}
 IMAGE_DISEASE_TYPES = ['kidney_stone_image', 'pneumonia_image']
 
 for disease in DISEASE_TYPES:
@@ -91,7 +119,53 @@ if not MODELS:
     print("   python train_hypertension.py")
     print("   python train_stroke.py")
 
-print("Loading image models...")
+def get_supported_image_diseases():
+    return [
+        disease_type
+        for disease_type, artifact in IMAGE_MODEL_ARTIFACTS.items()
+        if artifact.get('has_pt') or artifact.get('has_pkl')
+    ]
+
+
+def load_image_model_if_needed(disease_type):
+    if disease_type in IMAGE_MODELS:
+        return IMAGE_MODELS[disease_type]
+
+    artifact = IMAGE_MODEL_ARTIFACTS.get(disease_type, {})
+    model_pt_file = artifact.get('model_pt_file')
+    model_pkl_file = artifact.get('model_pkl_file')
+
+    if artifact.get('has_pt'):
+        if not ensure_torch_image_support():
+            raise RuntimeError(f'PyTorch image runtime unavailable: {TORCH_IMAGE_IMPORT_ERROR or "unknown error"}')
+
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model, target_layer_name = load_binary_cnn_model(
+            model_pt_file,
+            IMAGE_META.get(disease_type, {}),
+            device=device,
+        )
+        IMAGE_MODELS[disease_type] = {
+            'type': 'pytorch_cnn',
+            'model': model,
+            'device': device,
+            'target_layer': target_layer_name,
+        }
+        print(f"✅ {disease_type.upper()} PyTorch image model lazy-loaded")
+    elif artifact.get('has_pkl'):
+        IMAGE_MODELS[disease_type] = joblib.load(model_pkl_file)
+        print(f"✅ {disease_type.upper()} sklearn image model lazy-loaded")
+    else:
+        raise FileNotFoundError(f'No image model artifact found for {disease_type}')
+
+    labels_file = artifact.get('labels_file')
+    if disease_type not in IMAGE_LABELS and labels_file and os.path.exists(labels_file):
+        IMAGE_LABELS[disease_type] = joblib.load(labels_file)
+
+    return IMAGE_MODELS[disease_type]
+
+
+print("Registering image model artifacts (lazy loading enabled)...")
 for disease in IMAGE_DISEASE_TYPES:
     try:
         model_dir = os.path.dirname(os.path.abspath(__file__))
@@ -109,27 +183,23 @@ for disease in IMAGE_DISEASE_TYPES:
                 meta = {}
         IMAGE_META[disease] = meta
 
-        if os.path.exists(model_pt_file) and TORCH_IMAGE_SUPPORT:
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            model, target_layer_name = load_binary_cnn_model(model_pt_file, meta, device=device)
-            IMAGE_MODELS[disease] = {
-                'type': 'pytorch_cnn',
-                'model': model,
-                'device': device,
-                'target_layer': target_layer_name,
-            }
-            if os.path.exists(labels_file):
-                IMAGE_LABELS[disease] = joblib.load(labels_file)
-            print(f"✅ {disease.upper()} PyTorch image model loaded!")
-        elif os.path.exists(model_pkl_file):
-            IMAGE_MODELS[disease] = joblib.load(model_pkl_file)
-            if os.path.exists(labels_file):
-                IMAGE_LABELS[disease] = joblib.load(labels_file)
-            print(f"✅ {disease.upper()} sklearn image model loaded!")
+        IMAGE_MODEL_ARTIFACTS[disease] = {
+            'model_pt_file': model_pt_file,
+            'model_pkl_file': model_pkl_file,
+            'labels_file': labels_file,
+            'has_pt': os.path.exists(model_pt_file),
+            'has_pkl': os.path.exists(model_pkl_file),
+        }
+
+        if os.path.exists(labels_file):
+            IMAGE_LABELS[disease] = joblib.load(labels_file)
+
+        if IMAGE_MODEL_ARTIFACTS[disease]['has_pt'] or IMAGE_MODEL_ARTIFACTS[disease]['has_pkl']:
+            print(f"✅ {disease.upper()} image artifacts ready (lazy)")
         else:
             print(f"⚠️  {disease.upper()} image model not found - training needed")
     except Exception as e:
-        print(f"⚠️  Error loading image model {disease}: {e}")
+        print(f"⚠️  Error registering image model {disease}: {e}")
 
 # ============================================================
 # DISEASE DESCRIPTIONS
@@ -1016,6 +1086,7 @@ def home():
         'status': 'running',
         'models_loaded': list(MODELS.keys()),
         'image_models_loaded': list(IMAGE_MODELS.keys()),
+        'available_image_diseases': get_supported_image_diseases(),
         'version': '2.0',
         'endpoints': {
             '/predict': 'POST - Predict disease risk',
@@ -1033,7 +1104,7 @@ def health():
         'models_loaded': len(MODELS),
         'image_models_loaded': len(IMAGE_MODELS),
         'available_diseases': list(MODELS.keys()),
-        'available_image_diseases': list(IMAGE_MODELS.keys())
+        'available_image_diseases': get_supported_image_diseases()
     })
 
 @app.route('/diseases', methods=['GET'])
@@ -1155,10 +1226,11 @@ def predict_image():
         if not disease_type:
             return jsonify({'error': 'Missing disease_type'}), 400
 
-        if disease_type not in IMAGE_MODELS:
+        supported_types = get_supported_image_diseases()
+        if disease_type not in supported_types:
             return jsonify({
                 'error': f'Image disease type "{disease_type}" not supported',
-                'supported_types': list(IMAGE_MODELS.keys())
+                'supported_types': supported_types
             }), 400
 
         image_file = request.files.get('file') or request.files.get('image')
@@ -1169,7 +1241,7 @@ def predict_image():
         if not image_bytes:
             return jsonify({'error': 'Image file is empty'}), 400
 
-        model = IMAGE_MODELS[disease_type]
+        model = load_image_model_if_needed(disease_type)
         labels = IMAGE_LABELS.get(disease_type, [])
         decision_threshold = get_image_decision_threshold(disease_type)
         attention_map = None
