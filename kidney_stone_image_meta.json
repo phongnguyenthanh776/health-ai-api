@@ -1,0 +1,28 @@
+{
+  "classes": [
+    "Normal",
+    "Stone"
+  ],
+  "image_size": [
+    224,
+    224
+  ],
+  "epochs": 8,
+  "batch_size": 16,
+  "learning_rate": 0.001,
+  "val_accuracy": 0.9372579395817195,
+  "val_balanced_accuracy": 0.9243342877594847,
+  "val_f1": 0.8596187175043327,
+  "val_auc": 0.9729599141016463,
+  "threshold": 0.745,
+  "model_type": "pytorch_cnn_gradcam",
+  "model_name": "resnet18",
+  "target_layer": "layer4",
+  "device": "cpu",
+  "pretrained": true,
+  "feature_extract_mode": true,
+  "train_size": 5163,
+  "val_size": 1291,
+  "disease_type": "kidney_stone_image",
+  "visualization_type": "gradcam"
+}

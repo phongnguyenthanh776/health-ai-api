@@ -1,0 +1,39 @@
+# Python packages cho AI Model Training và Flask API
+# Cài đặt: pip install -r requirements.txt
+
+# Core ML Libraries
+pandas>=2.0.0
+numpy>=1.24.0
+scikit-learn>=1.3.0
+imbalanced-learn>=0.12.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Model Persistence
+joblib>=1.3.0
+
+# API Framework
+flask>=2.3.0
+flask-cors>=4.0.0
+
+# Image Processing
+pillow>=10.0.0
+
+# Optional: Deep Learning (install manually if your Python version supports it)
+# tensorflow>=2.13.0
+
+# PyTorch image pipeline
+torch>=2.7.0
+torchvision>=0.22.0
+
+# Optional: Kaggle API
+kaggle>=1.5.0
+
+# Optional: Advanced ML
+xgboost>=2.0.0
+lightgbm>=4.0.0
+
+# Utils
+requests>=2.31.0

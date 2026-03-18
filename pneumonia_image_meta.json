@@ -1,0 +1,29 @@
+{
+  "classes": [
+    "NORMAL",
+    "PNEUMONIA"
+  ],
+  "image_size": [
+    224,
+    224
+  ],
+  "epochs": 8,
+  "batch_size": 16,
+  "learning_rate": 0.001,
+  "val_accuracy": 0.9761092150170648,
+  "val_balanced_accuracy": 0.9677696351551541,
+  "val_f1": 0.9836575875486381,
+  "val_auc": 0.9952935932563354,
+  "threshold": 0.43000000000000005,
+  "model_type": "pytorch_cnn_gradcam",
+  "model_name": "resnet18",
+  "target_layer": "layer4",
+  "device": "cpu",
+  "pretrained": true,
+  "feature_extract_mode": false,
+  "train_size": 4977,
+  "val_size": 879,
+  "disease_type": "pneumonia_image",
+  "visualization_type": "gradcam",
+  "val_source": "internal_split_from_all_images"
+}
